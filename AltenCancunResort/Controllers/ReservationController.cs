@@ -1,8 +1,11 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using AltenCancunResort.Data;
 using AltenCancunResort.Models;
+using AltenCancunResort.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace AltenCancunResort.Controllers
 {
@@ -10,123 +13,141 @@ namespace AltenCancunResort.Controllers
     [Route("[controller]")]
     public class ReservationController : ControllerBase
     {
-        private readonly IReservationRepository _reservationRepository;
-        private readonly IGuestRepository _guestRepository;
+        private readonly IReservationService _reservationService;
+        private readonly IGuestService _guestService;
+        private readonly ILogger<ReservationController> _logger;
 
-        public ReservationController(IReservationRepository reservationRepository, IGuestRepository guestRepository)
+        public ReservationController(IReservationService reservationService, 
+                                    IGuestService guestService,
+                                    ILogger<ReservationController> logger)
         {
-            _reservationRepository = reservationRepository;
-            _guestRepository = guestRepository;
+            _reservationService = reservationService;
+            _guestService = guestService;
+            _logger = logger;
         }
 
 
 
         // Reservation create action
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] Reservation reservation)
+        public async Task<IActionResult> Create([FromBody] CreateReservationInput input)
         {
-            DateTime startDate = reservation.StartDate.Date;
-            DateTime endDate = reservation.EndDate.Date;
-
-            // verify guest exists
-            if(await _guestRepository.GetGuestByID(reservation.GuestID) == null)
+            try
             {
-                return NotFound("Guest not found.");
+                var reservationCreatedOutput = await _reservationService.CreateReservation(input);
+                if(reservationCreatedOutput == null)
+                {
+                    return BadRequest();
+                }
+                var reservationIdInput = new ReservationIdInput
+                {
+                    ReservationID = reservationCreatedOutput.ReservationID
+                };
+                return CreatedAtRoute("GetReservationByID", reservationIdInput, reservationCreatedOutput);
             }
-
-            // date range validation
-            var validationResult = await ReservationDatesRangeValidation(startDate, endDate);
-            if(!typeof(OkResult).IsAssignableFrom(validationResult.GetType()))
+            catch(Exception ex)
             {
-                return validationResult;
+                _logger.LogError($"Error in Create ReservationController: {ex.Message}");
+                return StatusCode(500, "Internal server error");
             }
-
-            // place reservation
-            await _reservationRepository.PlaceReservation(reservation);
             
-            // returns the created reservation object
-            return CreatedAtRoute("GetReservationByID", new { reservationID = reservation.ReservationID }, reservation);
-        }
-
-        // Checks availability
-        [HttpGet("checkAvailability/{start:DateTime}/{end:DateTime}")]
-        public async Task<IActionResult> CheckAvailability(DateTime start, DateTime end)
-        {
-            bool available = await _reservationRepository.CheckAvailabilityForDates(start.Date, end.Date);
-            return Ok(available);
-        }
-
-        // Get list of guest's reservations
-        [HttpGet("{guestID:int}")]
-        public async Task<IActionResult> GetAllReservationsForGuest(int guestID)
-        {
-            var reservations = await _reservationRepository.GetGuestReservations(guestID);
-            return Ok(reservations);
         }
 
         // Get reservation by id
-        [HttpGet("reservation/{reservationID:int}", Name = "GetReservationByID")]
-        public async Task<IActionResult> GetReservationByID(int reservationID)
+        [HttpGet("reservation/{ReservationID:int}", Name = "GetReservationByID")]
+        public async Task<IActionResult> GetReservationByID([FromRoute] ReservationIdInput input)
         {
-            var reservations = await _reservationRepository.GetReservationByID(reservationID);
-            return Ok(reservations);
+            try
+            {
+                var reservation = await _reservationService.GetReservationById(input);
+                if(reservation == null)
+                {
+                    return NotFound();
+                }
+                return Ok(reservation);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error in GetReservationByID ReservationController: {ex.Message}");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        // Checks availability
+        [HttpGet("checkAvailability/{StartDate:DateTime}/{EndDate:DateTime}")]
+        public async Task<IActionResult> CheckAvailability([FromRoute] CheckAvailabilityInput input)
+        {
+            var available = await _reservationService.CheckAvailability(input);
+            if(available.IsAvailable)
+            {
+                return Ok();
+            }
+            else
+            {
+                return NotFound("The given dates are not available.");
+            }
         }
     
-        // Reservation create action
-        [HttpPatch("cancel/{reservationID:int}")]
-        public async Task<IActionResult> CancelReservation(int reservationID)
+        // Cancel the selected reservation
+        [HttpPatch("cancel/{ReservationID:int}")]
+        public async Task<IActionResult> CancelReservation([FromRoute] ReservationIdInput input)
         {
-            await _reservationRepository.CancelReservation(reservationID);
-            return NoContent();
+            try
+            {
+                var outputResult = await _reservationService.CancelReservation(input);
+                if(outputResult != null)
+                {
+                    return NoContent();
+                }
+                else
+                {
+                    return BadRequest("Entered reservation not found.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error in CancelReservation ReservationController: {ex.Message}");
+                return StatusCode(500, "Internal server error");
+            }
         }
     
-        // Reservation create action
-        [HttpPatch("updateDates/{reservationID:int}/{startDate:DateTime}/{endDate:DateTime}")]
-        public async Task<IActionResult> ModifyReservationDates(int reservationID, DateTime startDate, DateTime endDate)
+        // Modify the reservation dates
+        [HttpPatch("updateDates/{ReservationID:int}/{StartDate:DateTime}/{EndDate:DateTime}")]
+        public async Task<IActionResult> ModifyReservationDates([FromRoute] ModifyReservationDatesInput input)
         {
-            // date range validation
-            var validationResult = await ReservationDatesRangeValidation(startDate, endDate);
-            if(!typeof(OkResult).IsAssignableFrom(validationResult.GetType()))
+            try
             {
-                return validationResult;
+                // date range validation
+                var validationResult = await _reservationService.ModifyReservationDates(input);
+                if(validationResult != null)
+                {
+                    return NoContent();
+                }
+                else
+                {
+                    return BadRequest();
+                }
             }
-            
-            await _reservationRepository.UpdateDatesReservation(reservationID, startDate, endDate);
-            return NoContent();
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error in ModifyReservationDates ReservationController: {ex.Message}");
+                return StatusCode(500, "Internal server error");
+            }
         }
 
-        // Validate the dates in the given range
-        private async Task<IActionResult> ReservationDatesRangeValidation(DateTime startDate, DateTime endDate)
+        // Get list of guest's reservations
+        [HttpGet("{GuestID:int}")]
+        public async Task<IActionResult> GetAllReservationsForGuest([FromRoute]GuestIdInput input)
         {
-            // verify correct date range
-            if(endDate < startDate)
+            var reservations = await _reservationService.GetActiveReservationsForGuest(input);
+            if(reservations != null)
             {
-                return BadRequest("Incorrect date range selected.");
+                return Ok(reservations);
             }
-
-            // verify 3 days at maximum selected
-            var intendedDays = (endDate - startDate).TotalDays;
-            if(intendedDays > 3)
+            else
             {
-                return BadRequest("Maximum 3 days per reservation.");
+                return NotFound();
             }
-
-            // verify availability
-            var isDateRangeAvailable = await _reservationRepository.CheckAvailabilityForDates(startDate, endDate);
-            if(!isDateRangeAvailable)
-            {
-                return BadRequest("Selected dates-range not available.");
-            }
-
-            // verify selected dates are within 1 to 30 days range
-            var Date30DaysFromToday = DateTime.Now.AddDays(30).Date;
-            if(!(startDate > DateTime.Now.Date && 
-                startDate <= Date30DaysFromToday && endDate <= Date30DaysFromToday))
-            {
-                return BadRequest("Dates-range has to start tomorrow at least and between 30 days from today.");
-            }
-
-            return Ok();
         }
     }
 }

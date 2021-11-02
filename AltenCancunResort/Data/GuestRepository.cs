@@ -1,6 +1,7 @@
+using System;
 using System.Linq;
 using System.Threading.Tasks;
-using AltenCancunResort.Models;
+using AltenCancunResort.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltenCancunResort.Data
@@ -14,33 +15,29 @@ namespace AltenCancunResort.Data
             _dbContext = dbContext;
         }
 
+
+
         // Creates a guest and returns the ID
-        public async Task<int> CreateGuest(Guest guest)
+        public async Task<GuestEntity> CreateGuest(GuestEntity guest)
         {
+            //default status active
             _dbContext.Guests.Add(guest);
             await _dbContext.SaveChangesAsync();
-            return guest.GuestID;
+            return guest;
         }
 
         // Retrieves a guest by ID
-        public Task<Guest> GetGuestByID(int guestID)
+        public Task<GuestEntity> GetGuestByID(int guestID)
         {
-            return _dbContext.Guests.Where(guest => guest.GuestID == guestID).FirstOrDefaultAsync<Guest>();
+            return _dbContext.Guests.Where(guest => guest.GuestID == guestID).FirstOrDefaultAsync<GuestEntity>();
         }
 
         // Enables/Disables selected guest
-        public Task<int> StatusActiveGuest(int guestID, bool activate)
+        public async Task<int> StatusActiveGuest(int guestID, bool status)
         {
-            Guest selectedGuest = _dbContext.Guests.Where(guest => guest.GuestID == guestID).FirstOrDefault<Guest>();
-            if(selectedGuest != null)
-            {
-                selectedGuest.Active = activate;
-                return _dbContext.SaveChangesAsync();
-            }
-            else
-            {
-                return null;
-            }
+            var selectedGuest = await _dbContext.Guests.Where(guest => guest.GuestID == guestID).FirstOrDefaultAsync<GuestEntity>();
+            selectedGuest.Active = status;
+            return await _dbContext.SaveChangesAsync();
         }
     }
 }
