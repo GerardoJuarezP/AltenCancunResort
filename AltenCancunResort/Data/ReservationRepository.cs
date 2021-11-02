@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using AltenCancunResort.Models;
+using AltenCancunResort.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltenCancunResort.Data
@@ -19,18 +19,11 @@ namespace AltenCancunResort.Data
 
 
         // Cancels the selected reservation
-        public Task CancelReservation(int reservationID)
+        public async Task<int> CancelReservation(int reservationID)
         {
-            Reservation selectedReservation = _dbContext.Reservations.Where(res => res.ReservationID == reservationID).FirstOrDefault<Reservation>();
-            if(selectedReservation != null)
-            {
-                selectedReservation.Active = false;
-                return _dbContext.SaveChangesAsync();
-            }
-            else
-            {
-                return null;
-            }
+            var selectedReservation = await _dbContext.Reservations.Where(res => res.ReservationID == reservationID).FirstOrDefaultAsync<ReservationEntity>();
+            selectedReservation.Active = false;
+            return await _dbContext.SaveChangesAsync();
         }
 
         // Validate if there is not reservations for the selected dates.
@@ -47,43 +40,43 @@ namespace AltenCancunResort.Data
         }
 
         // Retrieves the list of reservations for the selected guest
-        public Task<List<Reservation>> GetGuestReservations(int guestID)
+        public Task<List<ReservationEntity>> GetGuestReservations(int guestID)
         {
             var guestReservations = (from res in _dbContext.Reservations
                             where res.GuestID == guestID && res.Active == true
-                            select res).ToListAsync<Reservation>();
+                            select res).ToListAsync<ReservationEntity>();
 
             return guestReservations;
         }
 
         // Creates a reservation and returns the ID.
-        public async Task<int> PlaceReservation(Reservation reservation)
+        public async Task<ReservationEntity> PlaceReservation(ReservationEntity reservation)
         {
             _dbContext.Reservations.Add(reservation);
             await _dbContext.SaveChangesAsync();
-            return reservation.ReservationID;
+            return reservation;
         }
 
         // Updates the reservation dates.
-        public Task UpdateDatesReservation(int reservationID, DateTime startDate, DateTime endTime)
+        public async Task<int> UpdateDatesReservation(int reservationID, DateTime startDate, DateTime endTime)
         {
-            Reservation selectedReservation = _dbContext.Reservations.Where(res => res.ReservationID == reservationID).FirstOrDefault<Reservation>();
+            var selectedReservation = await _dbContext.Reservations.Where(res => res.ReservationID == reservationID).FirstOrDefaultAsync<ReservationEntity>();
             if(selectedReservation != null)
             {
                 selectedReservation.StartDate = startDate;
                 selectedReservation.EndDate = endTime;
-                return _dbContext.SaveChangesAsync();
+                return await _dbContext.SaveChangesAsync();
             }
             else
             {
-                return null;
+                return 0;
             }
         }
 
         // Gets the reservation by the selected ID
-        public Task<Reservation> GetReservationByID(int reservationID)
+        public Task<ReservationEntity> GetReservationByID(int reservationID)
         {
-            return _dbContext.Reservations.Where(res => res.ReservationID == reservationID).FirstOrDefaultAsync<Reservation>();
+            return _dbContext.Reservations.Where(res => res.ReservationID == reservationID).FirstOrDefaultAsync<ReservationEntity>();
         }
     }
 }

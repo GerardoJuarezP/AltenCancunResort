@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AltenCancunResort.Data;
+using AltenCancunResort.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpsPolicy;
@@ -33,6 +34,8 @@ namespace AltenCancunResort
             services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase("AltenCancunResort"));
             services.AddScoped<IGuestRepository, GuestRepository>();
             services.AddScoped<IReservationRepository, ReservationRepository>();
+            services.AddScoped<IGuestService, GuestService>();
+            services.AddScoped<IReservationService, ReservationService>();
 
             services.AddControllers();
             services.AddSwaggerGen(c =>

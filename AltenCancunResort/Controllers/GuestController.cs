@@ -1,7 +1,9 @@
+using System;
 using System.Threading.Tasks;
-using AltenCancunResort.Data;
 using AltenCancunResort.Models;
+using AltenCancunResort.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace AltenCancunResort.Controllers
 {
@@ -9,38 +11,78 @@ namespace AltenCancunResort.Controllers
     [Route("[controller]")]
     public class GuestController : ControllerBase
     {
-        private readonly IGuestRepository _repository;
+        private readonly IGuestService _service;
+        private readonly ILogger<GuestController> _logger;
 
-        public GuestController(IGuestRepository repository)
+        public GuestController(IGuestService service, ILogger<GuestController> logger)
         {
-            _repository = repository;
+            _service = service;
+            _logger = logger;
         }
+
+
 
         // Guest create action
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] Guest guest)
+        public async Task<IActionResult> Create([FromBody] CreateGuestInput input)
         {
-            await _repository.CreateGuest(guest);
-            return CreatedAtRoute("GetByID", new { guestID = guest.GuestID }, guest);
+            try
+            {
+                var outputResult = await _service.CreateGuest(input);
+                var idInputObj = new GuestIdInput
+                {
+                    GuestID = outputResult.GuestID
+                };
+                return CreatedAtRoute("GetByID", idInputObj, outputResult);
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError($"Error in Create GuestController: {ex.Message}");
+                return StatusCode(500, "Internal server error");
+            }
         }
 
         // Retrieves the guest for the selected ID
-        [HttpGet("{guestID:int}", Name = "GetByID")]
-        public async Task<IActionResult> GetByID(int guestID)
+        [HttpGet("{GuestID:int}", Name = "GetByID")]
+        public async Task<IActionResult> GetByID([FromRoute] GuestIdInput input)
         {
-            Guest guest= await _repository.GetGuestByID(guestID);
-            if(guest == null)
+            try
             {
-                return NotFound();
+                var guest = await _service.GetGuestById(input);
+                if(guest == null)
+                {
+                    return NotFound();
+                }
+                return Ok(guest);
             }
-            return Ok(guest);
+            catch(Exception ex)
+            {
+                _logger.LogError($"Error in GetByID GuestController: {ex.Message}");
+                return StatusCode(500, "Internal server error");
+            }
         }
 
-        [HttpPatch("{id:int}/{status:bool}")]
-        public async Task<IActionResult> UpdateGuestStatus(int id, bool status)
+        // Updates the guest status
+        [HttpPatch("{GuestID:int}/{Status:bool}")]
+        public async Task<IActionResult> UpdateGuestStatus([FromRoute] UpdateGuestInput input)
         {
-            await _repository.StatusActiveGuest(id, status);
-            return NoContent();
+            try
+            {
+                var outputResult = await _service.UpdateGuestStatus(input);
+                if(outputResult != null)
+                {
+                    return NoContent();
+                }
+                else
+                {
+                    return BadRequest("Entered guest not found.");
+                }
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError($"Error in UpdateGuestStatus GuestController: {ex.Message}");
+                return StatusCode(500, "Internal server error");
+            }
         }
     }
 }
